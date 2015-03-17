@@ -16,6 +16,8 @@ import Directives._
 import akka.http.model.StatusCodes
 import akka.http.marshallers.xml.ScalaXmlSupport._
 import akka.util.Timeout
+import scala.annotation.tailrec
+import akka.io.Inet
 
 object TheDemo extends App {
   implicit val sys = ActorSystem("TheDemo")
@@ -106,6 +108,13 @@ object TheDemo extends App {
     }
   })
 
+  val slowConsumer = Sink() { implicit b =>
+    val zip = b.add(ZipWith((_: Tick, b: ByteString) => b))
+    ticks ~> zip.in0
+    zip.out.scan(0)(_ + _.size) ~> Sink.foreach(println)
+    zip.in1
+  }
+
   val route =
     pathPrefix("home") {
       pathPrefix("files") {
@@ -121,12 +130,24 @@ object TheDemo extends App {
         } ~
         path("calc" / IntNumber / IntNumber) { (x, y) =>
           complete(a ? Add(x, y) collect { case z: Int => s"result: $z" })
+        } ~
+        path("upload") {
+          put {
+            extractRequest { req =>
+              req.entity.dataBytes.runWith(slowConsumer)
+              complete(StatusCodes.OK)
+            }
+          }
         }
     } ~
       path("exit") {
         sys.scheduler.scheduleOnce(1.second)(sys.shutdown())
         complete(StatusCodes.OK)
       }
-  val http = Http().bindAndStartHandlingWith(route, "localhost", 8080)
+
+  val http = Http().bind("localhost", 8080, options = Inet.SO.ReceiveBufferSize(80000) :: Nil)
+    .to(Sink.foreach(conn => conn.flow.join(route).run()))
+    .run()
+
   println(Await.result(http, 1.second))
 }
