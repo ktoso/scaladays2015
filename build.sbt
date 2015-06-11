@@ -2,7 +2,7 @@ name := "demo-http"
 
 scalaVersion := "2.11.5"
 
-val akkaVersion = "1.0-RC1"
+val akkaVersion = "1.0-RC2"
 libraryDependencies ++= Seq(
   "com.typesafe.akka" %% "akka-http-scala-experimental" % akkaVersion,
   "com.typesafe.akka" %% "akka-http-xml-experimental" % akkaVersion,
